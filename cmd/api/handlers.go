@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/mnabil1718/greenlight/internal/data"
+	"github.com/mnabil1718/greenlight/internal/validator"
 )
 
 func (app *application) healthcheckHandler(writer http.ResponseWriter, request *http.Request) {
@@ -25,7 +26,36 @@ func (app *application) healthcheckHandler(writer http.ResponseWriter, request *
 }
 
 func (app *application) createMovieHandler(writer http.ResponseWriter, request *http.Request) {
-	fmt.Fprintln(writer, "create a new movie")
+	// user cannot post data straight to Movie model
+	// it would be unsafe. Instead use this decoy
+	var createMovieRequest struct {
+		Title   string       `json:"title"`
+		Year    int32        `json:"year"`
+		Runtime data.Runtime `json:"runtime"`
+		Genres  []string     `json:"genres"`
+	}
+
+	err := app.readJSON(writer, request, &createMovieRequest)
+	if err != nil {
+		app.badRequestResponse(writer, request, err)
+		return
+	}
+
+	movie := &data.Movie{
+		Title:   createMovieRequest.Title,
+		Year:    createMovieRequest.Year,
+		Runtime: createMovieRequest.Runtime,
+		Genres:  createMovieRequest.Genres,
+	}
+
+	v := validator.New()
+
+	if data.ValidateMovie(v, movie); !v.Valid() {
+		app.failedValidationResponse(writer, request, v.Errors)
+		return
+	}
+
+	fmt.Fprintf(writer, "%+v\n", createMovieRequest)
 }
 
 func (app *application) showMovieHandler(writer http.ResponseWriter, request *http.Request) {
