@@ -1,6 +1,8 @@
 package main
 
 import (
+	"context"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -8,9 +10,35 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
+	_ "github.com/jackc/pgx/v5/stdlib"
 	"github.com/julienschmidt/httprouter"
 )
+
+func openDB(cfg config) (*sql.DB, error) {
+	db, err := sql.Open("pgx", cfg.db.dsn)
+	if err != nil {
+		return nil, err
+	}
+
+	db.SetMaxOpenConns(cfg.db.maxOpenConns)
+	db.SetMaxIdleConns(cfg.db.maxIdleConns)
+	duration, err := time.ParseDuration(cfg.db.maxIdleTime) // "15m" or "5s"
+	if err != nil {
+		return nil, err
+	}
+	db.SetConnMaxIdleTime(duration)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	if err = db.PingContext(ctx); err != nil {
+		return nil, err
+	}
+
+	return db, nil
+}
 
 func (app *application) getIdFromRequestContext(request *http.Request) (int64, error) {
 	params := httprouter.ParamsFromContext(request.Context())
