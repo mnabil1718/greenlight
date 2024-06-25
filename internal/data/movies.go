@@ -1,8 +1,11 @@
 package data
 
 import (
+	"database/sql"
+	"errors"
 	"time"
 
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/mnabil1718/greenlight/internal/validator"
 )
 
@@ -28,4 +31,107 @@ func ValidateMovie(v *validator.Validator, movie *Movie) {
 	v.Check(len(movie.Genres) >= 1, "genres", "must contain at least 1 genre")
 	v.Check(len(movie.Genres) <= 5, "genres", "must not contain more than 5 genres")
 	v.Check(validator.Unique(movie.Genres), "genres", "must not contain duplicate values")
+}
+
+type MovieModel struct {
+	DB *sql.DB
+}
+
+func (model MovieModel) Insert(movie *Movie) error {
+	SQL := `INSERT INTO 
+				movies (title, year, runtime, genres) 
+			VALUES 
+				($1, $2, $3, $4) 
+			RETURNING 
+				id, created_at, version`
+
+	args := []interface{}{movie.Title, movie.Year, movie.Runtime, movie.Genres}
+	err := model.DB.QueryRow(SQL, args...).Scan(&movie.ID, &movie.CreatedAt, &movie.Version)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func (model MovieModel) Get(id int64) (*Movie, error) {
+	if id < 1 {
+		return nil, ErrRecordNotFound
+	}
+
+	movie := &Movie{}
+	SQL := `SELECT id,title,year,runtime, genres,version,created_at
+			FROM movies
+			WHERE id=$1`
+
+	args := []interface{}{id}
+
+	// cannot scan directly into []string, see: https://github.com/jackc/pgx/issues/1779
+	m := pgtype.NewMap()
+	var genres []string
+	err := model.DB.QueryRow(SQL, args...).Scan(&movie.ID, &movie.Title, &movie.Year, &movie.Runtime, m.SQLScanner(&genres), &movie.Version, &movie.CreatedAt)
+	if err != nil {
+		switch {
+		case errors.Is(err, sql.ErrNoRows):
+			return nil, ErrRecordNotFound
+
+		default:
+			return nil, err
+		}
+	}
+
+	movie.Genres = genres
+	return movie, nil
+}
+
+func (model MovieModel) Update(movie *Movie) error {
+	SQL := `UPDATE movies
+			SET title=$1, year=$2, runtime=$3, genres=$4, version = version + 1
+			WHERE id=$5
+			RETURNING version`
+
+	args := []interface{}{movie.Title, movie.Year, movie.Runtime, movie.Genres, movie.ID}
+	err := model.DB.QueryRow(SQL, args...).Scan(&movie.Version)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (model MovieModel) Delete(id int64) error {
+	if id < 1 {
+		return ErrRecordNotFound
+	}
+
+	SQL := `DELETE FROM movies WHERE id=$1`
+	result, err := model.DB.Exec(SQL, id)
+	if err != nil {
+		return err
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+
+	if rowsAffected == 0 {
+		return ErrRecordNotFound
+	}
+
+	return nil
+}
+
+type MockMovieModel struct{}
+
+func (m MockMovieModel) Insert(movie *Movie) error {
+	return nil
+}
+func (m MockMovieModel) Get(id int64) (*Movie, error) {
+	return nil, nil
+}
+func (m MockMovieModel) Update(movie *Movie) error {
+	return nil
+}
+func (m MockMovieModel) Delete(id int64) error {
+	return nil
 }

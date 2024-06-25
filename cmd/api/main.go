@@ -7,6 +7,8 @@ import (
 	"net/http"
 	"os"
 	"time"
+
+	"github.com/mnabil1718/greenlight/internal/data"
 )
 
 const version = "1.0.0"
@@ -26,12 +28,11 @@ type config struct {
 type application struct {
 	logger *log.Logger
 	config config
+	models data.Models
 }
 
 func main() {
 	var cfg config
-
-	fmt.Println("env var", os.Getenv("GREENLIGHT_DB_DSN"))
 
 	flag.StringVar(&cfg.host, "host", "localhost", "Application Server Hostname")
 	flag.IntVar(&cfg.port, "port", 8080, "Application Server Port Number")
@@ -54,6 +55,7 @@ func main() {
 	app := application{
 		logger: logger,
 		config: cfg,
+		models: data.NewModels(db),
 	}
 
 	server := http.Server{
