@@ -11,6 +11,7 @@ var (
 )
 
 type MovieModelInterface interface {
+	GetAll(title string, genres []string, filters Filters) ([]*Movie, Metadata, error)
 	Insert(movie *Movie) error
 	Get(id int64) (*Movie, error)
 	Update(movie *Movie) error

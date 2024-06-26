@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgtype"
@@ -38,13 +39,65 @@ type MovieModel struct {
 	DB *sql.DB
 }
 
+func (model MovieModel) GetAll(title string, genres []string, filters Filters) ([]*Movie, Metadata, error) {
+
+	// id is included in ORDER BY to ensure sorting produces the exact order, see: https://www.postgresql.org/docs/current/queries-order.html#QUERIES-ORDER
+	// don't worry, string interpolation is already sanitized
+	SQL := fmt.Sprintf(`
+			SELECT COUNT(*) OVER(), id, title, year, runtime, genres, version, created_at
+			FROM movies
+			WHERE (to_tsvector('simple', title) @@ plainto_tsquery('simple', $1) OR $1 = '')
+			AND (genres @> $2 OR $2 = '{}')
+			ORDER BY %s %s, id ASC
+			LIMIT $3 OFFSET $4`, filters.sortColumn(), filters.sortDirection())
+
+	args := []interface{}{title, genres, filters.limit(), filters.offset()}
+
+	// the timeout starts right after creating this context
+	//  any other operation after this will be counted on timeout
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+
+	rows, err := model.DB.QueryContext(ctx, SQL, args...)
+	if err != nil {
+		return nil, Metadata{}, err // Metadata cannot be nil because its not a pointer
+	}
+	defer rows.Close()
+
+	totalRecords := 0
+	movies := []*Movie{}
+
+	for rows.Next() {
+		movie := &Movie{}
+
+		m := pgtype.NewMap()
+		var genres []string
+
+		err := rows.Scan(&totalRecords, &movie.ID, &movie.Title, &movie.Year, &movie.Runtime, m.SQLScanner(&genres), &movie.Version, &movie.CreatedAt)
+		// error from a single row
+		// e.g. error from the scanner
+		if err != nil {
+			return nil, Metadata{}, err
+		}
+		movie.Genres = genres
+		movies = append(movies, movie)
+	}
+
+	// collecting errors during the iterations
+	// e.g. connection issues, unexpected errors
+	if err = rows.Err(); err != nil {
+		return nil, Metadata{}, err
+	}
+
+	metadata := calculateMetadata(totalRecords, filters.Page, filters.PageSize)
+
+	return movies, metadata, nil
+}
+
 func (model MovieModel) Insert(movie *Movie) error {
-	SQL := `INSERT INTO 
-				movies (title, year, runtime, genres) 
-			VALUES 
-				($1, $2, $3, $4) 
-			RETURNING 
-				id, created_at, version`
+	SQL := `INSERT INTO movies (title, year, runtime, genres) 
+			VALUES ($1, $2, $3, $4) 
+			RETURNING id, created_at, version`
 
 	args := []interface{}{movie.Title, movie.Year, movie.Runtime, movie.Genres}
 	// the timeout starts right after creating this context
@@ -146,15 +199,22 @@ func (model MovieModel) Delete(id int64) error {
 
 type MockMovieModel struct{}
 
+func (m MockMovieModel) GetAll(title string, genres []string, filters Filters) ([]*Movie, Metadata, error) {
+	return nil, Metadata{}, nil
+}
+
 func (m MockMovieModel) Insert(movie *Movie) error {
 	return nil
 }
+
 func (m MockMovieModel) Get(id int64) (*Movie, error) {
 	return nil, nil
 }
+
 func (m MockMovieModel) Update(movie *Movie) error {
 	return nil
 }
+
 func (m MockMovieModel) Delete(id int64) error {
 	return nil
 }

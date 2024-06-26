@@ -10,6 +10,29 @@ import (
 	"github.com/mnabil1718/greenlight/internal/validator"
 )
 
+// don't need json tags because we're not
+// parsing JSON and put it in here, this is
+// just strct to hold query string params
+type ListMovieRequest struct {
+	Title        string
+	Genres       []string
+	data.Filters // can be accessed like: list.Sort OR list.Filters.Sort
+}
+
+type CreateMovieRequest struct {
+	Title   string       `json:"title"`
+	Year    int32        `json:"year"`
+	Runtime data.Runtime `json:"runtime"`
+	Genres  []string     `json:"genres"`
+}
+
+type UpdateMovieRequest struct {
+	Title   *string       `json:"title"` // using pointer field to detect if request JSON doesn't include field
+	Year    *int32        `json:"year"`
+	Runtime *data.Runtime `json:"runtime"`
+	Genres  []string      `json:"genres"`
+}
+
 func (app *application) healthcheckHandler(writer http.ResponseWriter, request *http.Request) {
 	env := envelope{
 		"status": "available",
@@ -26,15 +49,39 @@ func (app *application) healthcheckHandler(writer http.ResponseWriter, request *
 	}
 }
 
+func (app *application) listMovieHandler(writer http.ResponseWriter, request *http.Request) {
+	var listMovieRequest ListMovieRequest
+	validator := validator.New()
+	queryString := request.URL.Query()
+
+	listMovieRequest.Title = app.readString(queryString, "title", "")
+	listMovieRequest.Genres = app.readCSV(queryString, "genres", []string{})
+	listMovieRequest.PageSize = app.readInt(queryString, "page_size", 20, validator)
+	listMovieRequest.Page = app.readInt(queryString, "page", 1, validator)
+	listMovieRequest.Sort = app.readString(queryString, "sort", "id")
+	listMovieRequest.SortSafelist = []string{"id", "title", "year", "runtime", "-id", "-title", "-year", "-runtime"}
+
+	if data.ValidateFilters(validator, &listMovieRequest.Filters); !validator.Valid() {
+		app.failedValidationResponse(writer, request, validator.Errors)
+		return
+	}
+
+	movies, metadata, err := app.models.Movies.GetAll(listMovieRequest.Title, listMovieRequest.Genres, listMovieRequest.Filters)
+	if err != nil {
+		app.serverErrorResponse(writer, request, err)
+		return
+	}
+
+	err = app.writeJSON(writer, http.StatusOK, envelope{"metadata": metadata, "movies": movies}, nil)
+	if err != nil {
+		app.serverErrorResponse(writer, request, err)
+	}
+}
+
 func (app *application) createMovieHandler(writer http.ResponseWriter, request *http.Request) {
 	// user cannot post data straight to Movie model
 	// it would be unsafe. Instead use this decoy
-	var createMovieRequest struct {
-		Title   string       `json:"title"`
-		Year    int32        `json:"year"`
-		Runtime data.Runtime `json:"runtime"`
-		Genres  []string     `json:"genres"`
-	}
+	var createMovieRequest CreateMovieRequest
 
 	err := app.readJSON(writer, request, &createMovieRequest)
 	if err != nil {
@@ -104,12 +151,7 @@ func (app *application) updateMovieHandler(writer http.ResponseWriter, request *
 		return
 	}
 
-	var updateMovieRequest struct {
-		Title   *string       `json:"title"`
-		Year    *int32        `json:"year"`
-		Runtime *data.Runtime `json:"runtime"`
-		Genres  []string      `json:"genres"`
-	}
+	var updateMovieRequest UpdateMovieRequest
 	err = app.readJSON(writer, request, &updateMovieRequest)
 	if err != nil {
 		app.badRequestResponse(writer, request, err)

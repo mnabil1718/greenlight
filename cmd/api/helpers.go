@@ -8,12 +8,14 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"time"
 
 	_ "github.com/jackc/pgx/v5/stdlib"
 	"github.com/julienschmidt/httprouter"
+	"github.com/mnabil1718/greenlight/internal/validator"
 )
 
 func openDB(cfg config) (*sql.DB, error) {
@@ -123,4 +125,37 @@ func (app *application) readJSON(writer http.ResponseWriter, request *http.Reque
 	}
 
 	return nil
+}
+
+func (app *application) readString(queryString url.Values, key string, defaultValue string) string {
+
+	value := queryString.Get(key)
+	if value == "" {
+		return defaultValue
+	}
+
+	return value
+}
+
+func (app *application) readInt(queryString url.Values, key string, defaultValue int, validator *validator.Validator) int {
+	value := queryString.Get(key)
+	if value == "" {
+		return defaultValue
+	}
+
+	intValue, err := strconv.Atoi(value)
+	if err != nil {
+		validator.AddError(key, fmt.Sprintf("%s must be an integer value.", key))
+	}
+
+	return intValue
+}
+
+func (app *application) readCSV(queryString url.Values, key string, defaultValues []string) []string {
+	value := queryString.Get(key)
+	if value == "" {
+		return defaultValues
+	}
+
+	return strings.Split(value, ",")
 }
