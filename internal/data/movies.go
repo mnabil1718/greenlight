@@ -1,6 +1,7 @@
 package data
 
 import (
+	"context"
 	"database/sql"
 	"errors"
 	"time"
@@ -46,7 +47,11 @@ func (model MovieModel) Insert(movie *Movie) error {
 				id, created_at, version`
 
 	args := []interface{}{movie.Title, movie.Year, movie.Runtime, movie.Genres}
-	err := model.DB.QueryRow(SQL, args...).Scan(&movie.ID, &movie.CreatedAt, &movie.Version)
+	// the timeout starts right after creating this context
+	//  any other operation after this will be counted on timeout
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	err := model.DB.QueryRowContext(ctx, SQL, args...).Scan(&movie.ID, &movie.CreatedAt, &movie.Version)
 	if err != nil {
 		return err
 	}
@@ -68,7 +73,12 @@ func (model MovieModel) Get(id int64) (*Movie, error) {
 	// cannot scan directly into []string, see: https://github.com/jackc/pgx/issues/1779
 	m := pgtype.NewMap()
 	var genres []string
-	err := model.DB.QueryRow(SQL, args...).Scan(&movie.ID, &movie.Title, &movie.Year, &movie.Runtime, m.SQLScanner(&genres), &movie.Version, &movie.CreatedAt)
+
+	// the timeout starts right after creating this context
+	//  any other operation after this will be counted on timeout
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	err := model.DB.QueryRowContext(ctx, SQL, args...).Scan(&movie.ID, &movie.Title, &movie.Year, &movie.Runtime, m.SQLScanner(&genres), &movie.Version, &movie.CreatedAt)
 	if err != nil {
 		switch {
 		case errors.Is(err, sql.ErrNoRows):
@@ -86,13 +96,22 @@ func (model MovieModel) Get(id int64) (*Movie, error) {
 func (model MovieModel) Update(movie *Movie) error {
 	SQL := `UPDATE movies
 			SET title=$1, year=$2, runtime=$3, genres=$4, version = version + 1
-			WHERE id=$5
+			WHERE id=$5 AND version = $6
 			RETURNING version`
 
-	args := []interface{}{movie.Title, movie.Year, movie.Runtime, movie.Genres, movie.ID}
-	err := model.DB.QueryRow(SQL, args...).Scan(&movie.Version)
+	args := []interface{}{movie.Title, movie.Year, movie.Runtime, movie.Genres, movie.ID, movie.Version}
+	// the timeout starts right after creating this context
+	//  any other operation after this will be counted on timeout
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	err := model.DB.QueryRowContext(ctx, SQL, args...).Scan(&movie.Version)
 	if err != nil {
-		return err
+		switch {
+		case errors.Is(err, sql.ErrNoRows):
+			return ErrEditConflict
+		default:
+			return err
+		}
 	}
 
 	return nil
@@ -104,7 +123,11 @@ func (model MovieModel) Delete(id int64) error {
 	}
 
 	SQL := `DELETE FROM movies WHERE id=$1`
-	result, err := model.DB.Exec(SQL, id)
+	// the timeout starts right after creating this context
+	//  any other operation after this will be counted on timeout
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	result, err := model.DB.ExecContext(ctx, SQL, id)
 	if err != nil {
 		return err
 	}

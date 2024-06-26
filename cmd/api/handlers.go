@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strconv"
 
 	"github.com/mnabil1718/greenlight/internal/data"
 	"github.com/mnabil1718/greenlight/internal/validator"
@@ -104,10 +105,10 @@ func (app *application) updateMovieHandler(writer http.ResponseWriter, request *
 	}
 
 	var updateMovieRequest struct {
-		Title   string       `json:"title"`
-		Year    int32        `json:"year"`
-		Runtime data.Runtime `json:"runtime"`
-		Genres  []string     `json:"genres"`
+		Title   *string       `json:"title"`
+		Year    *int32        `json:"year"`
+		Runtime *data.Runtime `json:"runtime"`
+		Genres  []string      `json:"genres"`
 	}
 	err = app.readJSON(writer, request, &updateMovieRequest)
 	if err != nil {
@@ -115,7 +116,7 @@ func (app *application) updateMovieHandler(writer http.ResponseWriter, request *
 		return
 	}
 
-	_, err = app.models.Movies.Get(id)
+	movie, err := app.models.Movies.Get(id)
 	if err != nil {
 		switch {
 		case errors.Is(err, data.ErrRecordNotFound):
@@ -128,12 +129,26 @@ func (app *application) updateMovieHandler(writer http.ResponseWriter, request *
 		}
 	}
 
-	movie := &data.Movie{
-		ID:      id,
-		Title:   updateMovieRequest.Title,
-		Year:    updateMovieRequest.Year,
-		Runtime: updateMovieRequest.Runtime,
-		Genres:  updateMovieRequest.Genres,
+	if request.Header.Get("X-Expected-Version") != "" {
+		if strconv.FormatInt(int64(movie.Version), 32) != request.Header.Get("X-Expected-Version") {
+			app.editConflictResponse(writer, request)
+			return
+		}
+	}
+
+	// if request field is nil, the value would be
+	// the previous field value from DB
+	if updateMovieRequest.Title != nil {
+		movie.Title = *updateMovieRequest.Title
+	}
+	if updateMovieRequest.Year != nil {
+		movie.Year = *updateMovieRequest.Year
+	}
+	if updateMovieRequest.Runtime != nil {
+		movie.Runtime = *updateMovieRequest.Runtime
+	}
+	if updateMovieRequest.Genres != nil {
+		movie.Genres = updateMovieRequest.Genres // Note that we don't need to dereference a slice.
 	}
 
 	v := validator.New()
@@ -145,7 +160,13 @@ func (app *application) updateMovieHandler(writer http.ResponseWriter, request *
 
 	err = app.models.Movies.Update(movie)
 	if err != nil {
-		app.serverErrorResponse(writer, request, err)
+		switch {
+		case errors.Is(err, data.ErrEditConflict):
+			app.editConflictResponse(writer, request)
+		default:
+			app.serverErrorResponse(writer, request, err)
+		}
+		return
 	}
 
 	err = app.writeJSON(writer, http.StatusOK, envelope{"movie": movie}, nil)
