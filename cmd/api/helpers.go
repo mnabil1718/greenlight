@@ -71,7 +71,6 @@ func (app *application) writeJSON(writer http.ResponseWriter, code int, data env
 	writer.Write(resp)
 
 	return nil
-
 }
 
 func (app *application) readJSON(writer http.ResponseWriter, request *http.Request, destination any) error {
