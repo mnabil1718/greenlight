@@ -2,11 +2,7 @@ package main
 
 import (
 	"flag"
-	"fmt"
-	"log"
-	"net/http"
 	"os"
-	"time"
 
 	"github.com/mnabil1718/greenlight/internal/data"
 	"github.com/mnabil1718/greenlight/internal/jsonlog"
@@ -68,20 +64,7 @@ func main() {
 		models: data.NewModels(db),
 	}
 
-	server := http.Server{
-		Addr:         fmt.Sprintf("%s:%d", cfg.host, cfg.port),
-		Handler:      app.routes(),
-		ErrorLog:     log.New(logger, "", 0),
-		IdleTimeout:  time.Minute,
-		ReadTimeout:  10 * time.Second,
-		WriteTimeout: 30 * time.Second,
-	}
-
-	logger.PrintInfo(fmt.Sprintf("starting %s server on %s", cfg.env, server.Addr), map[string]string{
-		"addr": server.Addr,
-		"env":  cfg.env,
-	})
-	err = server.ListenAndServe()
+	err = app.serve()
 	if err != nil {
 		logger.PrintFatal(err, nil)
 	}
