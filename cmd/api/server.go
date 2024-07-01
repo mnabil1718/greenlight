@@ -40,7 +40,17 @@ func (app *application) serve() error {
 		ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 		defer cancel()
 
-		shutDownErr <- server.Shutdown(ctx)
+		err := server.Shutdown(ctx)
+		if err != nil {
+			shutDownErr <- err
+		}
+
+		app.logger.PrintInfo("completing background tasks", map[string]string{
+			"addr": server.Addr,
+		})
+
+		app.wg.Wait()
+		shutDownErr <- nil
 	}()
 
 	app.logger.PrintInfo(fmt.Sprintf("starting %s server on %s", app.config.env, server.Addr), map[string]string{
@@ -53,7 +63,7 @@ func (app *application) serve() error {
 		return err
 	}
 
-	err = <-shutDownErr
+	err = <-shutDownErr // reading from channel, blocks until it receives a value from channel
 	if err != nil {
 		return err
 	}
@@ -63,5 +73,4 @@ func (app *application) serve() error {
 	})
 
 	return nil
-
 }
