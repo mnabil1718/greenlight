@@ -18,18 +18,27 @@ type MovieModelInterface interface {
 	Delete(id int64) error
 }
 
+type UsersModelInterface interface {
+	Insert(user *User) error
+	GetByEmail(email string) (*User, error)
+	Update(user *User) error
+}
+
 type Models struct {
 	Movies MovieModelInterface
+	Users  UsersModelInterface
 }
 
 func NewModels(db *sql.DB) Models {
 	return Models{
 		Movies: MovieModel{DB: db},
+		Users:  UserModel{DB: db},
 	}
 }
 
 func NewMockModels() Models {
 	return Models{
 		Movies: MockMovieModel{},
+		Users:  MockUserModel{},
 	}
 }

@@ -27,7 +27,7 @@ type CreateMovieRequest struct {
 }
 
 type UpdateMovieRequest struct {
-	Title   *string       `json:"title"` // using pointer field to detect if request JSON doesn't include field
+	Title   *string       `json:"title"` // using pointer field to differentiate "" or nil
 	Year    *int32        `json:"year"`
 	Runtime *data.Runtime `json:"runtime"`
 	Genres  []string      `json:"genres"`
