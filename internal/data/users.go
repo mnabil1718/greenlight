@@ -2,6 +2,7 @@ package data
 
 import (
 	"context"
+	"crypto/sha256"
 	"database/sql"
 	"errors"
 	"strings"
@@ -125,6 +126,10 @@ func (model UserModel) GetByEmail(email string) (*User, error) {
 }
 
 func (model UserModel) Update(user *User) error {
+	// even if we passed email param, if the value
+	// is the same as the previous value in the record,
+	// then UNIQUE constraint won't kick in
+
 	SQL := `UPDATE users 
 			SET name=$1, email=$2, password=$3, activated=$4, version=version+1
 			WHERE id=$5 AND version=$6
@@ -150,6 +155,33 @@ func (model UserModel) Update(user *User) error {
 	return nil
 }
 
+func (model UserModel) GetForToken(scope string, tokenPlainText string) (*User, error) {
+	SQL := `SELECT u.id, u.name, u.email, u.password, u.activated, u.version, u.created_at FROM users u 
+			INNER JOIN tokens t ON t.user_id=u.id
+			WHERE t.hash=$1 AND t.scope=$2 AND expiry_time > NOW()`
+
+	hashArray := sha256.Sum256([]byte(tokenPlainText))
+
+	user := &User{}
+
+	args := []interface{}{hashArray[:], scope}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+
+	err := model.DB.QueryRowContext(ctx, SQL, args...).Scan(&user.ID, &user.Name, &user.Email, &user.Password.hash, &user.Activated, &user.Version, &user.CreatedAt)
+	if err != nil {
+		switch {
+		case errors.Is(err, sql.ErrNoRows):
+			return nil, ErrRecordNotFound
+		default:
+			return nil, err
+		}
+	}
+
+	return user, nil
+}
+
 type MockUserModel struct{}
 
 func (model MockUserModel) Insert(user *User) error {
@@ -171,4 +203,16 @@ func (model MockUserModel) GetByEmail(email string) (*User, error) {
 
 func (model MockUserModel) Update(user *User) error {
 	return nil
+}
+
+func (model MockUserModel) GetForToken(scope string, tokenPlainText string) (*User, error) {
+	user := &User{
+		ID:        1,
+		Name:      "Elole Kusk",
+		Email:     "elole@gmail.com",
+		Activated: true,
+		Version:   1,
+		CreatedAt: time.Now(),
+	}
+	return user, nil
 }

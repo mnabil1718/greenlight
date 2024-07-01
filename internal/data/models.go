@@ -22,17 +22,20 @@ type UsersModelInterface interface {
 	Insert(user *User) error
 	GetByEmail(email string) (*User, error)
 	Update(user *User) error
+	GetForToken(scope string, tokenPlainText string) (*User, error)
 }
 
 type Models struct {
 	Movies MovieModelInterface
 	Users  UsersModelInterface
+	Tokens TokenModel
 }
 
 func NewModels(db *sql.DB) Models {
 	return Models{
 		Movies: MovieModel{DB: db},
 		Users:  UserModel{DB: db},
+		Tokens: TokenModel{DB: db},
 	}
 }
 
