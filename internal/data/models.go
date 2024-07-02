@@ -26,16 +26,18 @@ type UsersModelInterface interface {
 }
 
 type Models struct {
-	Movies MovieModelInterface
-	Users  UsersModelInterface
-	Tokens TokenModel
+	Movies      MovieModelInterface
+	Users       UsersModelInterface
+	Tokens      TokenModel
+	Permissions PermissionModel
 }
 
 func NewModels(db *sql.DB) Models {
 	return Models{
-		Movies: MovieModel{DB: db},
-		Users:  UserModel{DB: db},
-		Tokens: TokenModel{DB: db},
+		Movies:      MovieModel{DB: db},
+		Users:       UserModel{DB: db},
+		Tokens:      TokenModel{DB: db},
+		Permissions: PermissionModel{DB: db},
 	}
 }
 
