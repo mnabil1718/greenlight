@@ -1,10 +1,13 @@
 package main
 
 import (
+	"expvar"
 	"flag"
 	"os"
+	"runtime"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/mnabil1718/greenlight/internal/data"
 	"github.com/mnabil1718/greenlight/internal/jsonlog"
@@ -85,6 +88,20 @@ func main() {
 	defer db.Close()
 
 	logger.PrintInfo("database connection pool established successfully.", nil)
+
+	expvar.NewString("version").Set(version)
+
+	expvar.Publish("goroutines", expvar.Func(func() interface{} {
+		return runtime.NumGoroutine()
+	}))
+
+	expvar.Publish("database", expvar.Func(func() interface{} {
+		return db.Stats()
+	}))
+
+	expvar.Publish("timestamp", expvar.Func(func() interface{} {
+		return time.Now().Unix()
+	}))
 
 	app := application{
 		logger: logger,
