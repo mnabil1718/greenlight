@@ -26,6 +26,12 @@ type User struct {
 	CreatedAt time.Time `json:"created_at"`
 }
 
+var AnonymousUser = &User{}
+
+func (u *User) IsAnonymous() bool {
+	return u == AnonymousUser
+}
+
 type password struct {
 	plaintext *string // pointer to differentiate "" and nil in json
 	hash      []byte
@@ -106,7 +112,7 @@ func (model UserModel) Insert(user *User) error {
 
 func (model UserModel) GetByEmail(email string) (*User, error) {
 	SQL := `SELECT id, name, email, password, activated, created_at, version 
-			WHERE email = $1`
+			FROM users WHERE email = $1`
 
 	user := &User{}
 	args := []interface{}{email}
