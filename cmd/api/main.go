@@ -3,6 +3,7 @@ package main
 import (
 	"expvar"
 	"flag"
+	"fmt"
 	"os"
 	"runtime"
 	"strings"
@@ -14,7 +15,10 @@ import (
 	"github.com/mnabil1718/greenlight/internal/mailer"
 )
 
-const version = "1.0.0"
+var (
+	buildTime string
+	version   string
+)
 
 type config struct {
 	port int
@@ -56,7 +60,7 @@ func main() {
 
 	flag.StringVar(&cfg.host, "host", "localhost", "Application Server Hostname")
 	flag.IntVar(&cfg.port, "port", 8080, "Application Server Port Number")
-	flag.StringVar(&cfg.db.dsn, "dsn", os.Getenv("GREENLIGHT_DB_DSN"), "PostgreSQL Connection String")
+	flag.StringVar(&cfg.db.dsn, "db-dsn", "", "PostgreSQL Connection String")
 	flag.StringVar(&cfg.env, "env", "dev", "Application Environment: (dev|staging|prod)")
 
 	flag.IntVar(&cfg.db.maxOpenConns, "db-max-open-conns", 25, "PostgreSQL max open connections")
@@ -77,7 +81,16 @@ func main() {
 		cfg.cors.trustedOrigins = strings.Fields(val)
 		return nil
 	})
+
+	displayVersion := flag.Bool("version", false, "Display version and exit")
+
 	flag.Parse()
+
+	if *displayVersion {
+		fmt.Printf("Version:\t%s\n", version)
+		fmt.Printf("Build time:\t%s\n", buildTime)
+		os.Exit(0)
+	}
 
 	logger := jsonlog.New(os.Stdout, jsonlog.LevelInfo)
 
